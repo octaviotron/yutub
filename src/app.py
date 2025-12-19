@@ -36,7 +36,7 @@ class YutubApp(tk.Tk):
         
         # Immediate check for yt-dlp to skip splash if possible
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if os.path.exists(os.path.join(project_root, "yt-dlp")):
+        if os.path.exists(os.path.join(project_root, "lib", "yt-dlp")):
             self.finalize_setup()
         else:
             self.withdraw() # Hide main window for splash
@@ -77,8 +77,10 @@ class YutubApp(tk.Tk):
         if success:
             self.after(0, self.finalize_setup)
         else:
-            self.after(0, lambda: messagebox.showerror(self.get_text("err_title"), self.get_text("err_init")))
-            self.after(0, self.destroy)
+            def show_err_and_die():
+                messagebox.showerror(self.get_text("err_title"), self.get_text("err_init"))
+                self.destroy()
+            self.after(0, show_err_and_die)
 
     def finalize_setup(self):
         """Show main UI once dependencies are ready"""

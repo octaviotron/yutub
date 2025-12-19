@@ -27,9 +27,10 @@ import threading
 import sys
 
 def ensure_yt_dlp(progress_callback=None, debug=False):
-    """Ensure yt-dlp executable exists in the project root. Download if missing."""
+    """Ensure yt-dlp executable exists in the lib folder. Download if missing."""
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    yt_dlp_path = os.path.join(project_root, "yt-dlp")
+    lib_path = os.path.join(project_root, "lib")
+    yt_dlp_path = os.path.join(lib_path, "yt-dlp")
     
     if os.path.exists(yt_dlp_path):
         return yt_dlp_path
@@ -37,11 +38,12 @@ def ensure_yt_dlp(progress_callback=None, debug=False):
     if progress_callback:
         progress_callback("Downloading yt-dlp...")
         
-    if debug: print("yt-dlp not found. Downloading latest version from GitHub...")
+    if debug: print("yt-dlp not found in lib. Downloading latest version from GitHub...")
     # URL for the latest stable Linux binary
     url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
     
     try:
+        os.makedirs(lib_path, exist_ok=True)
         def reporthook(blocknum, blocksize, totalsize):
             if progress_callback and totalsize > 0:
                 percent = min(100, int(blocknum * blocksize * 100 / totalsize))
@@ -139,7 +141,9 @@ def get_video_info(url, debug=False):
             return cmd + auth, auth
 
         # 1. Identify working auth strategy using Title check
-        title_base = ["./yt-dlp", "--js-runtimes", "node", "--get-title", "--no-warnings"]
+        # Update path to use lib/yt-dlp
+        yt_cmd = os.path.join(project_root, "lib", "yt-dlp")
+        title_base = [yt_cmd, "--js-runtimes", "node", "--get-title", "--no-warnings"]
         
         working_auth_args = []
         title = None
@@ -194,7 +198,7 @@ def get_video_info(url, debug=False):
             return {'error': "Could not fetch video info. All authentication strategies failed.\n- Check your internet connection.\n- Ensure you are logged in to YouTube in your browser.\n- If using Linux, try 'pip install secretstorage'."}
 
         # 2. Get Formats using the SUCCESSFUL strategy
-        format_base = ["./yt-dlp", "--js-runtimes", "node", "-F", "--no-warnings"]
+        format_base = [yt_cmd, "--js-runtimes", "node", "-F", "--no-warnings"]
         # Basic args + working auth
         final_format_cmd = list(format_base)
         final_format_cmd.extend(["--user-agent", user_agent, "--no-check-certificates"])
@@ -312,9 +316,11 @@ def download_format(url, format_id, progress_callback=None, conv_mode=None, auth
         browser = get_default_browser()
         user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         
+        yt_cmd = os.path.join(project_root, "lib", "yt-dlp")
+        
         # Command setup
         cmd = [
-            "./yt-dlp",
+            yt_cmd,
             "--js-runtimes", "node",
             "-f", format_id,
             "-o", "downloads/%(title)s.%(ext)s",
