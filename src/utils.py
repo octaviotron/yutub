@@ -24,6 +24,7 @@ import platform
 import urllib.request
 import stat
 import threading
+import sys
 
 def ensure_yt_dlp(progress_callback=None, debug=False):
     """Ensure yt-dlp executable exists in the project root. Download if missing."""
@@ -58,6 +59,36 @@ def ensure_yt_dlp(progress_callback=None, debug=False):
     except Exception as e:
         if debug: print(f"Error downloading yt-dlp: {e}")
         return None
+
+def ensure_dependencies(progress_callback=None, debug=False):
+    """Ensure secretstorage is installed in local lib folder for Linux auth."""
+    if platform.system() != "Linux":
+        return True
+
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    lib_path = os.path.join(project_root, "lib")
+    # Check for a key file inside secretstorage pkg
+    ss_path = os.path.join(lib_path, "secretstorage")
+    
+    if os.path.exists(ss_path):
+        return True
+
+    if progress_callback:
+        progress_callback("Installing dependencies (secretstorage)...")
+        
+    if debug: print("Installing secretstorage to local lib...")
+    
+    try:
+        os.makedirs(lib_path, exist_ok=True)
+        # Use subprocess to pip install
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-t", lib_path, "secretstorage"], 
+                              stdout=subprocess.DEVNULL if not debug else None,
+                              stderr=subprocess.DEVNULL if not debug else None)
+        if debug: print("Dependencies installed.")
+        return True
+    except Exception as e:
+        if debug: print(f"Error installing dependencies: {e}")
+        return False
 
 def get_default_browser():
     """Attempt to detect the default browser name for yt-dlp."""

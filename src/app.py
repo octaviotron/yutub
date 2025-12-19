@@ -22,7 +22,7 @@ from tkinter import ttk, messagebox
 import threading
 import os
 from .theme import *
-from .utils import get_video_info, download_format, ensure_yt_dlp
+from .utils import get_video_info, download_format, ensure_yt_dlp, ensure_dependencies
 from .languages import STRINGS
 
 class YutubApp(tk.Tk):
@@ -68,6 +68,10 @@ class YutubApp(tk.Tk):
         def update_label(txt):
             self.after(0, lambda: self.init_label.config(text=txt))
 
+        # 1. Ensure Pip Dependencies (Linux only mostly)
+        ensure_dependencies(update_label, debug=self.debug)
+
+        # 2. Ensure Binary
         success = ensure_yt_dlp(update_label, debug=self.debug)
         
         if success:
