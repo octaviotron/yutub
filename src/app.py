@@ -337,6 +337,15 @@ class YutubApp(tk.Tk):
 
         self.status_label.config(text=self.get_text("exploring"), foreground=ACCENT)
         self.explore_btn.config(state="disabled")
+        
+        # Reset UI
+        self.get_video_btn.config(state="disabled")
+        self.get_audio_btn.config(state="disabled")
+        self.audio_conv_combo.config(state="disabled")
+        
+        for tree in (self.video_tree, self.audio_tree):
+            for item in tree.get_children():
+                tree.delete(item)
 
         def task():
             data = get_video_info(url, debug=self.debug)
