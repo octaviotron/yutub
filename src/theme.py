@@ -20,13 +20,19 @@
 # Theme constants for Yutub App
 
 # Colors
-BG_DARK = "#0f172a"  # Slate 900
-BG_CARD = "#1e293b"  # Slate 800
-TEXT_MAIN = "#f8fafc" # Slate 50
-TEXT_DIM = "#94a3b8"  # Slate 400
-ACCENT = "#8b5cf6"    # Violet 500
-ACCENT_HOVER = "#7c3aed" # Violet 600
-SUCCESS = "#10b981"   # Emerald 500
+BG_DARK = "#02040F"      # Very dark blue (almost black)
+BG_CARD = "#333333"      # Dark gray
+TEXT_MAIN = "#D1FAFF"    # Light Cyan (Default text)
+TEXT_DIM = "#90A4AE"     # Dim text
+TEXT_WHITE = "#FFFFFF"   # White text
+
+ACCENT = "#003399"       # Dark Blue (Buttons)
+ACCENT_HOVER = "#002266" # Darker Blue
+ACCENT_DISABLED = "#4DD0E1" # Light Cyan (Disabled buttons)
+
+INPUT_BORDER = "#003399" # Dark Blue
+
+SUCCESS = "#10b981"      # Emerald 500
 SUCCESS_HOVER = "#059669" # Emerald 600
 
 # Fonts

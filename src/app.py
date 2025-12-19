@@ -94,30 +94,41 @@ class YutubApp(tk.Tk):
     def configure_styles(self):
         self.style.configure("TFrame", background=BG_DARK)
         self.style.configure("TLabel", background=BG_DARK, foreground=TEXT_MAIN, font=FONT_NORMAL)
-        self.style.configure("Title.TLabel", background=BG_DARK, foreground=ACCENT, font=FONT_TITLE)
+        self.style.configure("Title.TLabel", background=BG_DARK, foreground=ACCENT_DISABLED, font=FONT_TITLE) # Title pop with lighter color? Or darker? Let's use Disabled(Light cyan) or just TEXT_MAIN
+        # User didn't specify title color, but light cyan is default text.
+        
         self.style.configure("Header.TLabel", background=BG_DARK, foreground=TEXT_MAIN, font=FONT_HEADER)
         self.style.configure("Footer.TLabel", background=BG_DARK, foreground=TEXT_DIM, font=FONT_FOOTER)
         
-        self.style.configure("TButton", background=ACCENT, foreground=TEXT_MAIN, borderwidth=0, padding=10, font=FONT_BOLD)
+        # Buttons: Dark Blue background, White text
+        self.style.configure("TButton", background=ACCENT, foreground=TEXT_WHITE, borderwidth=0, padding=10, font=FONT_BOLD)
         self.style.map("TButton", background=[("active", ACCENT_HOVER)])
         
-        self.style.configure("Download.TButton", background=SUCCESS, font=FONT_HEADER)
-        self.style.map("Download.TButton", background=[("active", SUCCESS_HOVER), ("disabled", TEXT_DIM)])
+        # Download Button (User Req: Dark Blue enabled, Gray disabled, White text always)
+        self.style.configure("Download.TButton", background=ACCENT, foreground=TEXT_WHITE, font=FONT_HEADER)
+        self.style.map("Download.TButton", 
+            background=[("active", ACCENT_HOVER), ("disabled", TEXT_DIM)], 
+            foreground=[("disabled", TEXT_WHITE)]
+        )
 
-        # Disabled Styles
-        self.style.configure("Disabled.Treeview", background="#334155", foreground=TEXT_DIM, fieldbackground="#334155")
-        self.style.configure("Disabled.TButton", background=TEXT_DIM)
+        # General Disabled Button Style (just in case used elsewhere)
+        self.style.configure("Disabled.TButton", background=TEXT_DIM, foreground=TEXT_WHITE)
+        self.style.map("TButton", background=[("disabled", TEXT_DIM)], foreground=[("disabled", TEXT_WHITE)])
+
+        # Treeview Disabled
+        self.style.configure("Disabled.Treeview", background="#1a1a1a", foreground=TEXT_DIM, fieldbackground="#1a1a1a")
 
         self.style.configure("TCombobox", fieldbackground=BG_CARD, background=ACCENT, foreground=TEXT_MAIN, arrowcolor=TEXT_MAIN)
         self.style.map("TCombobox", 
-            fieldbackground=[("readonly", BG_CARD), ("disabled", BG_DARK)], 
-            foreground=[("readonly", TEXT_MAIN), ("disabled", TEXT_DIM)],
-            arrowcolor=[("disabled", TEXT_DIM)])
+            fieldbackground=[("readonly", BG_CARD), ("disabled", TEXT_DIM)], 
+            background=[("disabled", TEXT_DIM)],
+            foreground=[("readonly", TEXT_MAIN), ("disabled", TEXT_WHITE)],
+            arrowcolor=[("disabled", TEXT_WHITE)])
 
         self.style.configure("Treeview", background=BG_CARD, foreground=TEXT_MAIN, fieldbackground=BG_CARD, borderwidth=0, font=FONT_NORMAL)
-        self.style.map("Treeview", background=[("selected", ACCENT)])
+        self.style.map("Treeview", background=[("selected", ACCENT), ("selected", ACCENT_HOVER)]) # Accent is dark blue
 
-        # Language Button Style (Round-ish, Black/White)
+        # Language Button Style (Round-ish, Black/White) - Keep as requested previously
         self.style.configure("Lang.TButton", 
             background="#000000", 
             foreground="#FFFFFF", 
@@ -131,6 +142,10 @@ class YutubApp(tk.Tk):
             background=[("active", "#333333")], 
             foreground=[("active", "#FFFFFF")]
         )
+
+        # Treeview Headings: Dark Blue background, White text
+        self.style.configure("Treeview.Heading", background=ACCENT, foreground=TEXT_WHITE, font=FONT_BOLD, borderwidth=0)
+        self.style.map("Treeview.Heading", background=[("active", ACCENT_HOVER)])
 
         self.style.map("Treeview", background=[("selected", ACCENT)])
 
@@ -212,64 +227,93 @@ class YutubApp(tk.Tk):
         url_input_row = ttk.Frame(url_section)
         url_input_row.pack(fill="x")
         
-        self.url_entry = tk.Entry(url_input_row, bg=BG_CARD, fg=TEXT_MAIN, insertbackground=TEXT_MAIN, font=FONT_NORMAL, border=0, highlightthickness=1, highlightbackground=ACCENT)
-        self.url_entry.pack(side="left", fill="x", expand=True, padx=(0, 10), ipady=8)
+        # User Req: Dark gray background with white text color for url input field, Dark blue outline
+        # To get internal padding + border, we use a Frame as the border container
+        input_container = tk.Frame(url_input_row, bg=BG_CARD, highlightthickness=2, highlightbackground=INPUT_BORDER, highlightcolor=INPUT_BORDER)
+        input_container.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        
+        self.url_entry = tk.Entry(input_container, bg=BG_CARD, fg=TEXT_WHITE, insertbackground=TEXT_WHITE, font=FONT_NORMAL, border=0, highlightthickness=0)
+        self.url_entry.pack(fill="x", expand=True, padx=10, ipady=8)
         
         self.explore_btn = ttk.Button(url_input_row, text=self.get_text("explore"), command=self.handle_explore)
         self.explore_btn.pack(side="right")
         
         # Status Label
-        self.status_label = ttk.Label(body_frame, text="", font=FONT_FOOTER, foreground=TEXT_DIM)
-        self.status_label.pack(fill="x", pady=(0, 5))
+        self.status_label = ttk.Label(body_frame, text="", font=FONT_HEADER, foreground=TEXT_DIM, anchor="center")
+        self.status_label.pack(fill="x", pady=(0, 20))
         
         # 2.2 Center Body - Formats
         formats_frame = ttk.Frame(body_frame)
         formats_frame.pack(fill="both", expand=True)
+
+        # Configure Grid
+        formats_frame.columnconfigure(0, weight=1)
+        formats_frame.columnconfigure(1, weight=0, minsize=20) # Spacer
+        formats_frame.columnconfigure(2, weight=1)
+        formats_frame.rowconfigure(1, weight=1) # Tree row expands
         
-        # Video List
-        video_wrap = ttk.Frame(formats_frame)
-        video_wrap.pack(side="left", fill="both", expand=True, padx=(0, 10))
-        self.lbl_video = ttk.Label(video_wrap, text=self.get_text("video_header"), style="Header.TLabel")
-        self.lbl_video.pack(anchor="w", pady=(0, 5))
+        # --- HEADERS (Row 0) ---
+        self.lbl_video = ttk.Label(formats_frame, text=self.get_text("video_header"), style="Header.TLabel")
+        self.lbl_video.grid(row=0, column=0, sticky="w", pady=(0, 5))
         
-        self.video_tree = ttk.Treeview(video_wrap, columns=("format", "res", "size"), show="headings", height=10, selectmode="browse")
+        self.lbl_audio = ttk.Label(formats_frame, text=self.get_text("audio_header"), style="Header.TLabel")
+        self.lbl_audio.grid(row=0, column=2, sticky="w", pady=(0, 5))
+        
+        # --- TREES + SCROLLBARS (Row 1) ---
+        # Video Tree Frame (for scrollbar)
+        v_tree_frame = ttk.Frame(formats_frame)
+        v_tree_frame.grid(row=1, column=0, sticky="nsew")
+        
+        v_scroll = ttk.Scrollbar(v_tree_frame, orient="vertical")
+        v_scroll.pack(side="right", fill="y")
+        
+        self.video_tree = ttk.Treeview(v_tree_frame, columns=("format", "res", "size"), show="headings", selectmode="browse", yscrollcommand=v_scroll.set)
         self.video_tree.heading("format", text=self.get_text("col_format"))
         self.video_tree.heading("res", text=self.get_text("col_res"))
         self.video_tree.heading("size", text=self.get_text("col_size"))
         self.video_tree.column("format", width=100)
         self.video_tree.column("res", width=150)
         self.video_tree.column("size", width=100)
-        self.video_tree.pack(fill="both", expand=True)
+        self.video_tree.pack(side="left", fill="both", expand=True)
+        v_scroll.config(command=self.video_tree.yview)
         self.video_tree.bind("<<TreeviewSelect>>", self.on_video_select)
         
-        self.get_video_btn = ttk.Button(video_wrap, text=self.get_text("get_video"), style="Download.TButton", command=self.handle_get_video, state="disabled")
-        self.get_video_btn.pack(pady=10)
+        # Audio Tree Frame
+        a_tree_frame = ttk.Frame(formats_frame)
+        a_tree_frame.grid(row=1, column=2, sticky="nsew")
         
-        # Audio List
-        self.audio_wrap = ttk.Frame(formats_frame)
-        self.audio_wrap.pack(side="right", fill="both", expand=True, padx=(10, 0))
-        self.lbl_audio = ttk.Label(self.audio_wrap, text=self.get_text("audio_header"), style="Header.TLabel")
-        self.lbl_audio.pack(anchor="w", pady=(0, 5))
-        
-        self.audio_tree = ttk.Treeview(self.audio_wrap, columns=("ext", "quality", "size"), show="headings", height=10, selectmode="browse")
+        a_scroll = ttk.Scrollbar(a_tree_frame, orient="vertical")
+        a_scroll.pack(side="right", fill="y")
+
+        self.audio_tree = ttk.Treeview(a_tree_frame, columns=("ext", "quality", "size"), show="headings", selectmode="browse", yscrollcommand=a_scroll.set)
         self.audio_tree.heading("ext", text=self.get_text("col_format"))
         self.audio_tree.heading("quality", text=self.get_text("col_quality"))
         self.audio_tree.heading("size", text=self.get_text("col_size"))
         self.audio_tree.column("ext", width=80)
         self.audio_tree.column("quality", width=170)
         self.audio_tree.column("size", width=100)
-        self.audio_tree.pack(fill="both", expand=True)
+        self.audio_tree.pack(side="left", fill="both", expand=True)
+        a_scroll.config(command=self.audio_tree.yview)
         self.audio_tree.bind("<<TreeviewSelect>>", self.on_audio_select)
+
+        # --- ACTIONS (Row 2) ---
+        # Video Button
+        v_btn_frame = ttk.Frame(formats_frame)
+        v_btn_frame.grid(row=2, column=0, sticky="ew", pady=10)
         
-        # Audio Actions Row
-        audio_actions = ttk.Frame(self.audio_wrap)
-        audio_actions.pack(fill="x", pady=10)
+        self.get_video_btn = ttk.Button(v_btn_frame, text=self.get_text("get_video"), style="Download.TButton", command=self.handle_get_video, state="disabled")
+        self.get_video_btn.pack(fill="x") # Text remains centered by default in TButton
         
-        self.get_audio_btn = ttk.Button(audio_actions, text=self.get_text("get_audio"), style="Download.TButton", command=self.handle_get_audio, state="disabled")
-        self.get_audio_btn.pack(side="left", pady=(18, 0))
+        # Audio Actions
+        a_actions_frame = ttk.Frame(formats_frame)
+        a_actions_frame.grid(row=2, column=2, sticky="ew", pady=10)
         
-        conv_container = ttk.Frame(audio_actions)
-        conv_container.pack(side="left", padx=15)
+        self.get_audio_btn = ttk.Button(a_actions_frame, text=self.get_text("get_audio"), style="Download.TButton", command=self.handle_get_audio, state="disabled")
+        self.get_audio_btn.pack(side="left", fill="x", expand=True)
+        
+        conv_container = ttk.Frame(a_actions_frame)
+        conv_container.pack(side="right", padx=(10, 0)) # right aligned relative to button? Or keep left? "side=left, padx=15" was previous.
+        # Keeping consistent with old layout: Button left, Combobox right
         
         self.lbl_convert = ttk.Label(conv_container, text=self.get_text("convert_label"), style="Footer.TLabel")
         self.lbl_convert.pack(anchor="w")
@@ -308,7 +352,7 @@ class YutubApp(tk.Tk):
             return
 
         self.auth_args = data.get('auth_args')
-        self.status_label.config(text=f"{self.get_text('fetched')}{data['title']}", foreground=SUCCESS)
+        self.status_label.config(text=data['title'], foreground=SUCCESS)
         
         # Clear trees
         for tree in (self.video_tree, self.audio_tree):
