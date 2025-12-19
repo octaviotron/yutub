@@ -238,10 +238,13 @@ class YutubApp(tk.Tk):
         input_container = tk.Frame(url_input_row, bg=BG_CARD, highlightthickness=2, highlightbackground=INPUT_BORDER, highlightcolor=INPUT_BORDER)
         input_container.pack(side="left", fill="x", expand=True, padx=(0, 10))
         
-        self.url_entry = tk.Entry(input_container, bg=BG_CARD, fg=TEXT_WHITE, insertbackground=TEXT_WHITE, font=FONT_NORMAL, border=0, highlightthickness=0)
+        self.url_var = tk.StringVar()
+        self.url_var.trace_add("write", self.validate_input)
+        
+        self.url_entry = tk.Entry(input_container, textvariable=self.url_var, bg=BG_CARD, fg=TEXT_WHITE, insertbackground=TEXT_WHITE, font=FONT_NORMAL, border=0, highlightthickness=0)
         self.url_entry.pack(fill="x", expand=True, padx=10, ipady=8)
         
-        self.explore_btn = ttk.Button(url_input_row, text=self.get_text("explore"), command=self.handle_explore)
+        self.explore_btn = ttk.Button(url_input_row, text=self.get_text("explore"), command=self.handle_explore, state="disabled")
         self.explore_btn.pack(side="right")
         
         # Status Label
@@ -335,11 +338,18 @@ class YutubApp(tk.Tk):
         self.lbl_footer = ttk.Label(footer_frame, text=self.get_text("footer"), style="Footer.TLabel", anchor="center")
         self.lbl_footer.pack(fill="x")
 
+    def validate_input(self, *args):
+        url = self.url_var.get().strip()
+        # Requirements: youtube.com domain AND v= parameter
+        if "youtube.com" in url and ("?v=" in url or "&v=" in url):
+            self.explore_btn.config(state="normal")
+        else:
+            self.explore_btn.config(state="disabled")
+
     def handle_explore(self):
-        url = self.url_entry.get()
-        if not url:
-            messagebox.showwarning(self.get_text("w_input"), self.get_text("m_input"))
-            return
+        url = self.url_var.get().strip()
+        # Button is disabled if invalid, but double check doesn't hurt (logic flows better without popup if button is disabled)
+        if not url: return
 
         self.status_label.config(text=self.get_text("exploring"), foreground=ACCENT)
         self.explore_btn.config(state="disabled")
@@ -360,7 +370,7 @@ class YutubApp(tk.Tk):
         threading.Thread(target=task, daemon=True).start()
 
     def update_ui_with_data(self, data):
-        self.explore_btn.config(state="normal")
+        self.validate_input() # Re-enable check based on current text (in case user cleared it while loading)
         if 'error' in data:
             self.status_label.config(text=self.get_text("explore_failed"), foreground="red")
             self.show_error(self.get_text("err_title"), data['error'])
@@ -463,7 +473,7 @@ class YutubApp(tk.Tk):
             self.after(0, lambda: self.status_label.config(text=txt))
 
         def task():
-            success, msg = download_format(self.url_entry.get(), format_id, progress_update, conv_mode, self.auth_args, debug=self.debug)
+            success, msg = download_format(self.url_var.get(), format_id, progress_update, conv_mode, self.auth_args, debug=self.debug)
             self.after(0, lambda: self.on_download_complete(success, msg))
             
         threading.Thread(target=task, daemon=True).start()
