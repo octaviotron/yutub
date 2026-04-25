@@ -13,8 +13,16 @@
 ## Installation
 
 ### Prerequisites
-1.  **Python 3.11+**: Ensure Python is installed on your system.
-2.  **Web Browser**: Chrome, Firefox, Brave, Opera, Edge, or Safari. The app automatically detects your system's default browser to extract cookies and bypass bot detection. **Ensure you are logged into YouTube in one of these browsers.**
+- **Python 3.11+**: Ensure Python is installed on your system.
+- **Web Browser**: Ensure you are logged into YouTube in a supported browser (Brave, Chrome, Firefox, etc.) so the app can bypass bot detection.
+
+### Installation (Debian/Ubuntu/Linux)
+To ensure all features work correctly (including UI, audio conversion, and bot bypass), run the following command to install the required system packages:
+
+```bash
+sudo apt update
+sudo apt install python3-tk python3-pip nodejs ffmpeg gnome-keyring
+```
 
 ### Setup
 1.  Clone the repository:
@@ -22,14 +30,14 @@
     git clone https://github.com/octaviotron/yutub.git
     cd yutub
     ```
-2.  (Optional) If you are on Linux and encounter issues, you may need to install `ffmpeg` for audio conversion:
+2.  Run the application:
     ```bash
-    sudo apt install ffmpeg
+    python3 yutub.py
     ```
 
 **Note:** The application will automatically:
-- Download the latest `yt-dlp` executable if it's missing.
-- Use bundled dependencies (in the `lib/` folder) to handle secure authentication without polluting your system Python.
+- Download the latest `yt-dlp` executable into the `lib/` folder.
+- Install local Python dependencies (like `secretstorage`) into the `lib/` folder to handle secure authentication without modifying your system's global Python environment.
 
 ## Usage
 Run the application using Python:
