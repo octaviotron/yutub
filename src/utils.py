@@ -62,6 +62,21 @@ def ensure_yt_dlp(progress_callback=None, debug=False):
         if debug: print(f"Error downloading yt-dlp: {e}")
         return None
 
+def update_yt_dlp(debug=False):
+    """Force update yt-dlp binary."""
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    yt_dlp_path = os.path.join(project_root, "lib", "yt-dlp")
+    if not os.path.exists(yt_dlp_path):
+        return ensure_yt_dlp(debug=debug)
+    
+    try:
+        if debug: print("Updating yt-dlp...")
+        subprocess.check_call([yt_dlp_path, "-U"], stdout=subprocess.DEVNULL if not debug else None)
+        return yt_dlp_path
+    except Exception as e:
+        if debug: print(f"Error updating yt-dlp: {e}")
+        return yt_dlp_path
+
 def ensure_dependencies(progress_callback=None, debug=False):
     """Ensure secretstorage is installed in local lib folder for Linux auth."""
     if platform.system() != "Linux":
@@ -126,8 +141,8 @@ def get_video_info(url, debug=False):
         cookies_file = os.path.join(project_root, "cookies.txt")
         browser = get_default_browser()
         
-        # Common User-Agent to mimic a real browser
-        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        # Standard Desktop User-Agent
+        user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
         
         # Helper to construct args
         def build_full_cmd(base_cmd, c_path=None, b_name=None):
@@ -143,7 +158,7 @@ def get_video_info(url, debug=False):
         # 1. Identify working auth strategy using Title check
         # Update path to use lib/yt-dlp
         yt_cmd = os.path.join(project_root, "lib", "yt-dlp")
-        title_base = [yt_cmd, "--js-runtimes", "node", "--get-title", "--no-warnings"]
+        title_base = [yt_cmd, "--js-runtimes", "node", "--get-title", "--no-warnings", "--force-ipv4", "--no-check-certificates", "--geo-bypass", "--ignore-config", "--no-playlist", "--ignore-no-formats-error"]
         
         working_auth_args = []
         title = None
@@ -193,12 +208,11 @@ def get_video_info(url, debug=False):
                 continue
 
         if not title:
-            # Re-construct a helpful error message from the last failure but generally
-            # imply that no valid auth method was found.
-            return {'error': "Could not fetch video info. All authentication strategies failed.\n- Check your internet connection.\n- Ensure you are logged in to YouTube in your browser.\n- If using Linux, try 'pip install secretstorage'."}
+            last_err = err_msg if 'err_msg' in locals() else "No details available."
+            return {'error': f"Could not fetch video info. All authentication strategies failed.\n\nLast Error: {last_err[:300]}\n\nSuggestions:\n- Check your internet connection.\n- Ensure you are logged in to YouTube in your browser.\n- If using Linux, try 'pip install secretstorage'."}
 
         # 2. Get Formats using the SUCCESSFUL strategy
-        format_base = [yt_cmd, "--js-runtimes", "node", "-F", "--no-warnings"]
+        format_base = [yt_cmd, "--js-runtimes", "node", "-F", "--no-warnings", "--force-ipv4", "--no-check-certificates", "--geo-bypass", "--ignore-config", "--no-playlist"]
         # Basic args + working auth
         final_format_cmd = list(format_base)
         final_format_cmd.extend(["--user-agent", user_agent, "--no-check-certificates"])
@@ -207,6 +221,9 @@ def get_video_info(url, debug=False):
         
         try:
              output = subprocess.check_output(final_format_cmd, stderr=subprocess.STDOUT, env=env).decode()
+             if debug:
+                 with open(os.path.join(project_root, "debug_output.txt"), "w") as f:
+                     f.write(output)
         except subprocess.CalledProcessError as e:
              return {'error': f"Failed to fetch formats: {e.output.decode() if e.output else str(e)}"}
         
@@ -217,11 +234,15 @@ def get_video_info(url, debug=False):
         lines = output.splitlines()
         parsing = False
         for line in lines:
-            if line.startswith('ID') or '---' in line:
-                if '---' in line: parsing = True
+            if line.startswith('ID'):
+                parsing = True
                 continue
             
             if not parsing:
+                continue
+
+            # Skip separators (dashes or unicode box-drawing characters) and empty lines
+            if '---' in line or '───' in line or not line.strip():
                 continue
                 
             parts = line.split()
@@ -231,8 +252,10 @@ def get_video_info(url, debug=False):
             f_id = parts[0]
             extension = parts[1]
             
-            # Identify audio only formats
-            is_audio = 'audio only' in line or (parts[2] == 'audio' and parts[3] == 'only')
+            # Identify audio only formats - more robust check
+            is_audio = any(kw in line.lower() for kw in ['audio only', 'audio-only']) or \
+                       extension.lower() in ['m4a', 'mp3', 'ogg', 'wav', 'flac', 'opus'] or \
+                       (len(parts) > 2 and 'audio' in parts[2].lower())
             
             # Extract size
             size_match = re.search(r'(\d+\.?\d*)\s*([mMgG][iI]?[bB])', line)
@@ -277,8 +300,9 @@ def get_video_info(url, debug=False):
                 }
                 audio_formats.append(entry)
             else:
-                # Filter video by extension and exclude "video only"
-                if extension.lower() not in ['mp4', 'webm'] or 'video only' in line:
+                # Filter video by extension and exclude "video only" (DASH streams without audio)
+                is_video_only = 'video only' in line.lower() or 'video-only' in line.lower()
+                if extension.lower() not in ['mp4', 'webm', 'mkv'] or is_video_only:
                     continue
                 
                 # Extract resolution
