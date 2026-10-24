@@ -340,8 +340,8 @@ class YutubApp(tk.Tk):
 
     def validate_input(self, *args):
         url = self.url_var.get().strip()
-        # Requirements: youtube.com domain AND v= parameter
-        if "youtube.com" in url and ("?v=" in url or "&v=" in url):
+        # Requirements: youtube.com or youtu.be with valid identifiers
+        if ("youtube.com" in url and ("?v=" in url or "&v=" in url or "/shorts/" in url or "/embed/" in url)) or "youtu.be/" in url:
             self.explore_btn.config(state="normal")
         else:
             self.explore_btn.config(state="disabled")
@@ -436,7 +436,7 @@ class YutubApp(tk.Tk):
             return
         
         format_id = selection[0]
-        self.start_download(format_id)
+        self.start_download(format_id, is_audio=False)
 
     def handle_get_audio(self):
         selection = self.audio_tree.selection()
@@ -454,9 +454,9 @@ class YutubApp(tk.Tk):
         en_opts = ["Original Format", "Convert to MP3", "Convert to WAV"]
         conv_mode = en_opts[idx] if idx >= 0 else None
         
-        self.start_download(format_id, conv_mode)
+        self.start_download(format_id, conv_mode, is_audio=True)
 
-    def start_download(self, format_id, conv_mode=None):
+    def start_download(self, format_id, conv_mode=None, is_audio=False):
         # Create downloads folder
         os.makedirs("downloads", exist_ok=True)
         
@@ -473,7 +473,7 @@ class YutubApp(tk.Tk):
             self.after(0, lambda: self.status_label.config(text=txt))
 
         def task():
-            success, msg = download_format(self.url_var.get(), format_id, progress_update, conv_mode, self.auth_args, debug=self.debug)
+            success, msg = download_format(self.url_var.get(), format_id, progress_update, conv_mode, self.auth_args, is_audio=is_audio, debug=self.debug)
             self.after(0, lambda: self.on_download_complete(success, msg))
             
         threading.Thread(target=task, daemon=True).start()

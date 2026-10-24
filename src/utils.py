@@ -155,24 +155,35 @@ def get_video_info(url, debug=False):
                 auth = ["--cookies-from-browser", b_name]
             return cmd + auth, auth
 
-        # 1. Identify working auth strategy using Title check
-        # Update path to use lib/yt-dlp
         yt_cmd = os.path.join(project_root, "lib", "yt-dlp")
-        title_base = [yt_cmd, "--js-runtimes", "node", "--get-title", "--no-warnings", "--force-ipv4", "--no-check-certificates", "--geo-bypass", "--ignore-config", "--no-playlist", "--ignore-no-formats-error"]
+        format_base = [
+            yt_cmd,
+            "--js-runtimes", "node",
+            "--print", "TITLE:%(title)s",
+            "-F",
+            "--no-warnings",
+            "--force-ipv4",
+            "--no-check-certificates",
+            "--geo-bypass",
+            "--ignore-config",
+            "--no-playlist"
+        ]
         
-        working_auth_args = []
-        title = None
-        
-        # Define strategies: list of (cookies_path, browser_name)
+        # Define strategies in order:
+        # 1. Custom cookies.txt if present
+        # 2. Unauthenticated / No cookies (fastest, immune to web-client SABR streaming)
+        # 3. Detected default browser
+        # 4. Other Linux browsers
         strategies = []
         if os.path.exists(cookies_file):
             strategies.append((cookies_file, None))
-        strategies.append((None, browser))                # default detected
+        strategies.append((None, None))
+        if browser:
+            strategies.append((None, browser))
         if platform.system() == 'Linux':
-            # order matters: try likely candidates that might work without secretstorage if default fails
             for b in ['firefox', 'chrome', 'brave', 'edge', 'chromium', 'opera']:
-                if b != browser: strategies.append((None, b))
-        strategies.append((None, None))                   # no cookies (last resort)
+                if b != browser:
+                    strategies.append((None, b))
         
         # Prepare environment with PYTHONPATH for custom libs (secretstorage)
         env = os.environ.copy()
@@ -181,142 +192,134 @@ def get_video_info(url, debug=False):
             current_pythonpath = env.get("PYTHONPATH", "")
             env["PYTHONPATH"] = f"{lib_path}{os.pathsep}{current_pythonpath}"
 
-        # Execute strategies
+        working_auth_args = []
+        title = None
+        video_formats = []
+        audio_formats = []
+        err_msg = ""
+
+        # Execute strategies and validate that playable formats are returned
         for c_path, b_name in strategies:
             try:
-                full_cmd, auth_args = build_full_cmd(title_base, c_path, b_name)
-                full_cmd.append(url) # Add URL to the command
-                # We use subprocess.run to catch errors easily
-                # timeout increased to 90s
+                full_cmd, auth_args = build_full_cmd(format_base, c_path, b_name)
+                full_cmd.append(url)
                 res = subprocess.run(full_cmd, capture_output=True, text=True, timeout=90, env=env)
                 
                 if res.returncode == 0 and res.stdout.strip():
-                    title = res.stdout.strip()
-                    working_auth_args = auth_args
-                    if debug: print(f"Strategy worked: cookies={c_path}, browser={b_name}")
-                    break
+                    output = res.stdout
+                    cur_title = None
+                    cur_video = []
+                    cur_audio = []
+                    
+                    lines = output.splitlines()
+                    parsing = False
+                    for line in lines:
+                        if line.startswith("TITLE:"):
+                            cur_title = line[6:].strip()
+                            continue
+                        if line.startswith('ID'):
+                            parsing = True
+                            continue
+                        
+                        if not parsing or '---' in line or '───' in line or not line.strip():
+                            continue
+
+                        parts = line.split()
+                        if len(parts) < 3:
+                            continue
+                            
+                        f_id = parts[0]
+                        extension = parts[1]
+                        
+                        # Skip image storyboards
+                        if 'images' in line.lower() or 'storyboard' in line.lower():
+                            continue
+
+                        # Identify audio only formats
+                        is_audio = any(kw in line.lower() for kw in ['audio only', 'audio-only']) or \
+                                   extension.lower() in ['m4a', 'mp3', 'ogg', 'wav', 'flac', 'opus'] or \
+                                   (len(parts) > 2 and 'audio' in parts[2].lower())
+                        
+                        # Extract size (supports KiB, MiB, GiB)
+                        size_match = re.search(r'(\d+\.?\d*)\s*([kKmMgGtT][iI]?[bB])', line)
+                        filesize = size_match.group(0) if size_match else "Unknown"
+                        
+                        if is_audio:
+                            k_values = re.findall(r'(\d+)k', line)
+                            hz_match = re.search(r'(\d+)Hz', line)
+                            
+                            abr = "N/A"
+                            asr = "N/A"
+                            
+                            if hz_match:
+                                try:
+                                    khz = int(hz_match.group(1)) // 1000
+                                    asr = f"{khz}k"
+                                except:
+                                    asr = hz_match.group(0)
+                                if k_values:
+                                    abr = f"{k_values[-1]}k"
+                            elif len(k_values) >= 2:
+                                asr = f"{k_values[-1]}k"
+                                abr = f"{k_values[-2]}k"
+                            elif k_values:
+                                abr = f"{k_values[0]}k"
+                            
+                            quality = f"{abr} - {asr}" if (abr != "N/A" or asr != "N/A") else "N/A"
+                            
+                            entry = {
+                                'format_id': f_id,
+                                'ext': extension,
+                                'quality': quality,
+                                'size': filesize
+                            }
+                            cur_audio.append(entry)
+                        else:
+                            if extension.lower() not in ['mp4', 'webm', 'mkv']:
+                                continue
+                            
+                            res_match = re.search(r'(\d+x\d+)|(\d+p)', line)
+                            resolution = res_match.group(0) if res_match else parts[2]
+                            if resolution.lower() in ['audio', 'images']:
+                                continue
+                            
+                            entry = {
+                                'format_id': f_id,
+                                'ext': extension,
+                                'res': resolution,
+                                'size': filesize
+                            }
+                            cur_video.append(entry)
+                    
+                    # Accept strategy if a title and formats (especially audio or video) were found
+                    if cur_title and (cur_audio or cur_video):
+                        title = cur_title
+                        audio_formats = cur_audio
+                        video_formats = cur_video
+                        working_auth_args = auth_args
+                        if debug:
+                            print(f"Strategy worked: cookies={c_path}, browser={b_name} (audio={len(audio_formats)}, video={len(video_formats)})")
+                            with open(os.path.join(project_root, "debug_output.txt"), "w") as f:
+                                f.write(output)
+                        break
+                    else:
+                        if debug:
+                            print(f"Strategy yielded no playable formats: cookies={c_path}, browser={b_name}")
                 else:
-                    # Collect error for debugging if all fail
                     err_msg = res.stderr.strip() if res.stderr else "Unknown error"
-                    if debug: print(f"Strategy failed (c={c_path}, b={b_name}): rc={res.returncode}, err={err_msg[:200]}...")
+                    if debug:
+                        print(f"Strategy failed (c={c_path}, b={b_name}): rc={res.returncode}, err={err_msg[:200]}...")
 
             except subprocess.TimeoutExpired:
                 if debug: print(f"Strategy timed out: c={c_path}, b={b_name}")
             except Exception as e:
-                # strategy failed, try next
                 if debug: print(f"Strategy exception (c={c_path}, b={b_name}): {str(e)}")
                 continue
 
         if not title:
-            last_err = err_msg if 'err_msg' in locals() else "No details available."
+            last_err = err_msg if 'err_msg' in locals() and err_msg else "No details available."
             return {'error': f"Could not fetch video info. All authentication strategies failed.\n\nLast Error: {last_err[:300]}\n\nSuggestions:\n- Check your internet connection.\n- Ensure you are logged in to YouTube in your browser.\n- If using Linux, try 'pip install secretstorage'."}
 
-        # 2. Get Formats using the SUCCESSFUL strategy
-        format_base = [yt_cmd, "--js-runtimes", "node", "-F", "--no-warnings", "--force-ipv4", "--no-check-certificates", "--geo-bypass", "--ignore-config", "--no-playlist"]
-        # Basic args + working auth
-        final_format_cmd = list(format_base)
-        final_format_cmd.extend(["--user-agent", user_agent, "--no-check-certificates"])
-        final_format_cmd.extend(working_auth_args)
-        final_format_cmd.append(url) # append URL at the end
-        
-        try:
-             output = subprocess.check_output(final_format_cmd, stderr=subprocess.STDOUT, env=env).decode()
-             if debug:
-                 with open(os.path.join(project_root, "debug_output.txt"), "w") as f:
-                     f.write(output)
-        except subprocess.CalledProcessError as e:
-             return {'error': f"Failed to fetch formats: {e.output.decode() if e.output else str(e)}"}
-        
-        # 3. Parse formats
-        video_formats = []
-        audio_formats = []
-        
-        lines = output.splitlines()
-        parsing = False
-        for line in lines:
-            if line.startswith('ID'):
-                parsing = True
-                continue
-            
-            if not parsing:
-                continue
-
-            # Skip separators (dashes or unicode box-drawing characters) and empty lines
-            if '---' in line or '───' in line or not line.strip():
-                continue
-                
-            parts = line.split()
-            if len(parts) < 3:
-                continue
-                
-            f_id = parts[0]
-            extension = parts[1]
-            
-            # Identify audio only formats - more robust check
-            is_audio = any(kw in line.lower() for kw in ['audio only', 'audio-only']) or \
-                       extension.lower() in ['m4a', 'mp3', 'ogg', 'wav', 'flac', 'opus'] or \
-                       (len(parts) > 2 and 'audio' in parts[2].lower())
-            
-            # Extract size
-            size_match = re.search(r'(\d+\.?\d*)\s*([mMgG][iI]?[bB])', line)
-            filesize = size_match.group(0) if size_match else "Unknown"
-            
-            if is_audio:
-                # Extract all 'k' values (like 129k, 44k, etc)
-                k_values = re.findall(r'(\d+)k', line)
-                hz_match = re.search(r'(\d+)Hz', line)
-                
-                # Default values
-                abr = "N/A"
-                asr = "N/A"
-                
-                if hz_match:
-                    # Case 1: Sampling rate is in Hz (e.g. 44100Hz)
-                    try:
-                        khz = int(hz_match.group(1)) // 1000
-                        asr = f"{khz}k"
-                    except:
-                        asr = hz_match.group(0)
-                        
-                    # If we have Hz, then the last 'k' value is usually ABR
-                    if k_values:
-                        abr = f"{k_values[-1]}k"
-                elif len(k_values) >= 2:
-                    # Case 2: Both ABR and ASR are in 'k' format (e.g. 129k 44k)
-                    # For audio only, the last two are usually ABR and ASR
-                    asr = f"{k_values[-1]}k"
-                    abr = f"{k_values[-2]}k"
-                elif k_values:
-                    # Fallback
-                    abr = f"{k_values[0]}k"
-                
-                quality = f"{abr} - {asr}"
-                
-                entry = {
-                    'format_id': f_id,
-                    'ext': extension,
-                    'quality': quality or "N/A",
-                    'size': filesize
-                }
-                audio_formats.append(entry)
-            else:
-                # Filter video by extension and exclude "video only" (DASH streams without audio)
-                is_video_only = 'video only' in line.lower() or 'video-only' in line.lower()
-                if extension.lower() not in ['mp4', 'webm', 'mkv'] or is_video_only:
-                    continue
-                
-                # Extract resolution
-                res_match = re.search(r'(\d+x\d+)|(\d+p)', line)
-                resolution = res_match.group(0) if res_match else parts[2]
-                
-                entry = {
-                    'format_id': f_id,
-                    'ext': extension,
-                    'res': resolution,
-                    'size': filesize
-                }
-                video_formats.append(entry)
-                
         return {
             'title': title,
             'video': video_formats,
@@ -328,7 +331,7 @@ def get_video_info(url, debug=False):
         if debug: print(f"get_video_info exception: {e}")
         return {'error': str(e)}
 
-def download_format(url, format_id, progress_callback=None, conv_mode=None, auth_args=None, debug=False):
+def download_format(url, format_id, progress_callback=None, conv_mode=None, auth_args=None, is_audio=False, debug=False):
     """
     Download a specific format using the LOCAL yt-dlp executable.
     Saves to the 'downloads' folder.
@@ -342,11 +345,17 @@ def download_format(url, format_id, progress_callback=None, conv_mode=None, auth
         
         yt_cmd = os.path.join(project_root, "lib", "yt-dlp")
         
+        # When downloading video, mux with best audio stream so video files have sound
+        if is_audio or conv_mode is not None:
+            f_spec = format_id
+        else:
+            f_spec = f"{format_id}+bestaudio/{format_id}"
+
         # Command setup
         cmd = [
             yt_cmd,
             "--js-runtimes", "node",
-            "-f", format_id,
+            "-f", f_spec,
             "-o", "downloads/%(title)s.%(ext)s",
             "--no-warnings",
             "--user-agent", user_agent,
